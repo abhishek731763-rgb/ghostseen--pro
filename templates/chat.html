@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>GhostSeen PRO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+body{background:#08080a;color:#fff;height:100vh;display:flex;flex-direction:column}
+header{padding:15px;display:flex;justify-content:space-between;align-items:center;background:#111;border-bottom:1px solid #222}
+.logo{font-weight:900;color:#ff0055;font-size:22px}
+.online{font-size:12px;background:#1a1a1a;padding:5px 10px;border-radius:20px}
+#roomBar{display:flex;gap:8px;padding:10px;background:#0f0f0f;overflow:auto}
+.room{padding:6px 14px;border-radius:20px;background:#1e1e1e;font-size:13px;cursor:pointer;white-space:nowrap}
+.room.active{background:#ff0055}
+#box{flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:12px}
+.bubble{max-width:78%;padding:12px 14px;border-radius:18px;background:#1c1c1f;position:relative;animation:pop .2s}
+.bubble.me{background:linear-gradient(135deg,#ff0055,#ff3366);align-self:flex-end}
+.bubble .ghost{font-size:11px;opacity:.7;margin-bottom:4px}
+.bubble img{max-width:100%;border-radius:12px;margin-top:8px}
+.meta{display:flex;gap:10px;font-size:11px;opacity:.6;margin-top:6px}
+.like{cursor:pointer}
+#typing{font-size:12px;color:#ff0055;padding:0 15px;height:18px}
+#inputArea{display:flex;gap:10px;padding:12px;background:#111;align-items:center}
+#msg{flex:1;padding:14px 18px;border-radius:30px;border:none;background:#1e1e1e;color:#fff;outline:none}
+.iconBtn{background:#222;border:none;color:#fff;width:42px;height:42px;border-radius:50%;cursor:pointer}
+.sendBtn{background:#ff0055;border:none;color:#fff;padding:0 22px;height:42px;border-radius:30px;font-weight:bold;cursor:pointer}
+@keyframes pop{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+</style>
+</head>
+<body>
+<header><div class="logo">👻 GhostSeen PRO</div><div class="online">🟢 <span id="onlineCount">1</span> online</div></header>
+<div id="roomBar">
+<div class="room active" onclick="switchRoom('global')"># global</div>
+<div class="room" onclick="switchRoom('love')"># love</div>
+<div class="room" onclick="switchRoom('roast')"># roast</div>
+<div class="room" onclick="switchRoom('secret')"># secret</div>
+<div class="room" onclick="switchRoom('allahabad')"># allahabad</div>
+</div>
+<div id="box"></div>
+<div id="typing"></div>
+<div id="inputArea">
+<label class="iconBtn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">📷<input type="file" id="imgInput" hidden accept="image/*"></label>
+<input id="msg" placeholder="Ghost banke likh...">
+<button class="sendBtn" onclick="send()">Send</button>
+</div>
+<script>
+const socket = io();
+let myGhost = localStorage.getItem('ghost') || (()=>{
+ let n = ["Dark","Silent","Cute","Loner","Killer","Shy","Wild","Sad","Lost"][Math.floor(Math.random()*9)]+"Ghost"+Math.floor(Math.random()*900+100);
+ localStorage.setItem('ghost',n); return n;
+})();
+let currentRoom = 'global';
+let pendingImage = '';
+
+function switchRoom(r){
+ currentRoom=r;
+ document.querySelectorAll('.room').forEach(e=>e.classList.remove('active'));
+ event.target.classList.add('active');
+ document.getElementById('box').innerHTML='';
+ socket.emit('join',{room:currentRoom,ghost:myGhost});
+}
+socket.on('connect',()=>{ socket.emit('join',{room:currentRoom,ghost:myGhost}); });
+
+socket.on('history', msgs=>{ msgs.forEach(addMsg); });
+socket.on('new_msg', addMsg);
+socket.on('online', c=>{ document.getElementById('onlineCount').innerText=c; });
+socket.on('typing', d=>{ document.getElementById('typing').innerText = d.ghost+' typing...'; setTimeout(()=>document.getElementById('typing').innerText='',1500); });
+socket.on('update_like', m=>{ let el=document.getElementById('m-'+m.id); if(el) el.querySelector('.like').innerText='❤️ '+m.likes; });
+
+function addMsg(m){
+ let box=document.getElementById('box');
+ let isMe = m.ghost===myGhost;
+ let div=document.createElement('div');
+ div.className='bubble'+(isMe?' me':'');
+ div.id='m-'+m.id;
+ div.innerHTML=`<div class="ghost">${m.ghost} • ${m.time}</div><div>${m.text||''}</div>${m.image?`<img src="${m.image}">`:''}<div class="meta"><span class="like" onclick="like('${m.id}')">❤️ ${m.likes}</span></div>`;
+ box.appendChild(div);
+ box.scrollTop=box.scrollHeight;
+}
+function send(){
+ let inp=document.getElementById('msg');
+ if(!inp.value.trim() && !pendingImage) return;
+ socket.emit('message',{room:currentRoom,ghost:myGhost,text:inp.value,image:pendingImage});
+ inp.value=''; pendingImage='';
+}
+function like(id){ socket.emit('like',{room:currentRoom,id:id}); }
+document.getElementById('msg').addEventListener('input',()=>{ socket.emit('typing',{room:currentRoom,ghost:myGhost}); });
+document.getElementById('msg').addEventListener('keypress',e=>{if(e.key==='Enter') send();});
+document.getElementById('imgInput').addEventListener('change',e=>{
+ let file=e.target.files[0]; if(!file) return;
+ let reader=new FileReader();
+ reader.onload=ev=>{ pendingImage=ev.target.result; send(); };
+ reader.readAsDataURL(file);
+});
+</script>
+</body>
+</html>
